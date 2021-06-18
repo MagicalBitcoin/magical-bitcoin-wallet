@@ -140,6 +140,9 @@ pub enum Error {
     #[cfg(feature = "rpc")]
     /// Rpc client error
     Rpc(bitcoincore_rpc::Error),
+    #[cfg(feature = "sqlite")]
+    /// Rusqlite client error
+    Rusqlite(rusqlite::Error)
 }
 
 impl fmt::Display for Error {
@@ -196,6 +199,8 @@ impl_error!(crate::blockchain::esplora::EsploraError, Esplora);
 impl_error!(sled::Error, Sled);
 #[cfg(feature = "rpc")]
 impl_error!(bitcoincore_rpc::Error, Rpc);
+#[cfg(feature = "sqlite")]
+impl_error!(rusqlite::Error, Rusqlite);
 
 #[cfg(feature = "compact_filters")]
 impl From<crate::blockchain::compact_filters::CompactFiltersError> for Error {

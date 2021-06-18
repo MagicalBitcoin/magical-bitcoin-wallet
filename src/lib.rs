@@ -234,6 +234,9 @@ pub extern crate reqwest;
 #[cfg(feature = "key-value-db")]
 pub extern crate sled;
 
+#[cfg(feature = "sqlite")]
+pub extern crate rusqlite;
+
 #[allow(unused_imports)]
 #[cfg(test)]
 #[allow(unused_imports)]
