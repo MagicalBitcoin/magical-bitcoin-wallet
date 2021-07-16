@@ -32,13 +32,10 @@ socks = { version = "0.3", optional = true }
 lazy_static = { version = "1.4", optional = true }
 tiny-bip39 = { version = "^0.8", optional = true }
 bitcoinconsensus = { version = "0.19.0-3", optional = true }
+ureq = { version = "2.1", default-features = false, features = ["json"], optional = true }
 
 # Needed by bdk_blockchain_tests macro
 bitcoincore-rpc = { version = "0.13", optional = true }
-
-# Platform-specific dependencies
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1", features = ["rt"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 async-trait = "0.1"
@@ -50,21 +47,30 @@ minimal = []
 compiler = ["miniscript/compiler"]
 verify = ["bitcoinconsensus"]
 default = ["key-value-db", "electrum"]
-electrum = ["electrum-client"]
-esplora = ["reqwest", "futures"]
 compact_filters = ["rocksdb", "socks", "lazy_static", "cc"]
 key-value-db = ["sled"]
-async-interface = ["async-trait"]
 all-keys = ["keys-bip39"]
 keys-bip39 = ["tiny-bip39"]
 rpc = ["bitcoincore-rpc"]
+
+# We currently provide mulitple implementations of `Blockchain`, all are
+# non-async except for the `EsploraBlockchain` which can be either async or
+# non-async depending on the HTTP client in use.
+#
+# - Users wanting asynchronous HTTP calls should enable `async-interface` to get
+#   access to the async `EsploraBlockchain`.
+# - Users wanting non-async HTTP calls users should enable `esplora` AND `ureq`
+#   to get access to the blocking version of `EsploraBlockchain`.
+async-interface = ["async-trait", "esplora", "reqwest"]
+electrum = ["electrum-client"]
+esplora = ["futures"]           # Requires one of: `ureq` or `reqwest`.
 
 
 # Debug/Test features
 test-blockchains = ["bitcoincore-rpc", "electrum-client"]
 test-electrum = ["electrum", "electrsd/electrs_0_8_10", "test-blockchains"]
 test-rpc = ["rpc", "electrsd/electrs_0_8_10", "test-blockchains"]
-test-esplora = ["esplora", "electrsd/legacy", "electrsd/esplora_a33e97e1", "test-blockchains"]
+test-esplora = ["esplora", "ureq", "electrsd/legacy", "electrsd/esplora_a33e97e1", "test-blockchains"]
 test-md-docs = ["electrum"]
 
 [dev-dependencies]

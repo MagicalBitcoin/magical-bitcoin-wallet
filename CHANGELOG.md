@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Remove hard dependency on `tokio`.
+### Blockchain
+#### Added
+- Add a `ureq` backend for use when not using feature `async-interface` or
+  target WASM. `ureq` is a blocking HTTP client.
 
 ### Wallet
 
@@ -22,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Wallet
 - Added an option that must be explicitly enabled to allow signing using non-`SIGHASH_ALL` sighashes (#350)
 #### Changed
-`get_address` now returns an `AddressInfo` struct that includes the index and derefs to `Address`.
+- `get_address` now returns an `AddressInfo` struct that includes the index and derefs to `Address`.
 
 ## [v0.7.0] - [v0.6.0]
 

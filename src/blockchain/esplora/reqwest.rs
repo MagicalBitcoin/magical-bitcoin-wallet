@@ -9,18 +9,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-//! Esplora
-//!
-//! This module defines a [`Blockchain`] struct that can query an Esplora backend
-//! populate the wallet's [database](crate::database::Database) by
-//!
-//! ## Example
-//!
-//! ```no_run
-//! # use bdk::blockchain::esplora::EsploraBlockchain;
-//! let blockchain = EsploraBlockchain::new("https://blockstream.info/testnet/api", None);
-//! # Ok::<(), bdk::Error>(())
-//! ```
+//! Esplora by way of `reqwest` HTTP client.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -39,8 +28,8 @@ use bitcoin::hashes::hex::{FromHex, ToHex};
 use bitcoin::hashes::{sha256, Hash};
 use bitcoin::{BlockHash, BlockHeader, Script, Transaction, Txid};
 
-use self::utils::{ElectrumLikeSync, ElsGetHistoryRes};
-use super::*;
+use crate::blockchain::utils::{ElectrumLikeSync, ElsGetHistoryRes};
+use crate::blockchain::*;
 use crate::database::BatchDatabase;
 use crate::error::Error;
 use crate::wallet::utils::ChunksIterator;
@@ -71,13 +60,19 @@ impl std::convert::From<UrlClient> for EsploraBlockchain {
 }
 
 impl EsploraBlockchain {
-    /// Create a new instance of the client from a base URL
-    pub fn new(base_url: &str, concurrency: Option<u8>) -> Self {
+    /// Create a new instance of the client from a base URL.
+    pub fn new(base_url: &str) -> Self {
         EsploraBlockchain(UrlClient {
             url: base_url.to_string(),
             client: Client::new(),
-            concurrency: concurrency.unwrap_or(DEFAULT_CONCURRENT_REQUESTS),
+            concurrency: DEFAULT_CONCURRENT_REQUESTS,
         })
+    }
+
+    /// Set the concurrency to use when doing batch queries against the Esplora instance.
+    pub fn with_concurrency(mut self, concurrency: u8) -> Self {
+        self.0.concurrency = concurrency;
+        self
     }
 }
 
@@ -105,19 +100,19 @@ impl Blockchain for EsploraBlockchain {
     }
 
     fn get_tx(&self, txid: &Txid) -> Result<Option<Transaction>, Error> {
-        Ok(await_or_block!(self.0._get_tx(txid))?)
+        Ok(self.0._get_tx(txid).await?)
     }
 
     fn broadcast(&self, tx: &Transaction) -> Result<(), Error> {
-        Ok(await_or_block!(self.0._broadcast(tx))?)
+        Ok(self.0._broadcast(tx).await?)
     }
 
     fn get_height(&self) -> Result<u32, Error> {
-        Ok(await_or_block!(self.0._get_height())?)
+        Ok(self.0._get_height().await?)
     }
 
     fn estimate_fee(&self, target: usize) -> Result<FeeRate, Error> {
-        let estimates = await_or_block!(self.0._get_fee_estimates())?;
+        let estimates = self.0._get_fee_estimates().await?;
 
         let fee_val = estimates
             .into_iter()
@@ -292,60 +287,48 @@ impl ElectrumLikeSync for UrlClient {
         &self,
         scripts: I,
     ) -> Result<Vec<Vec<ElsGetHistoryRes>>, Error> {
-        let future = async {
-            let mut results = vec![];
-            for chunk in ChunksIterator::new(scripts.into_iter(), self.concurrency as usize) {
-                let mut futs = FuturesOrdered::new();
-                for script in chunk {
-                    futs.push(self._script_get_history(&script));
-                }
-                let partial_results: Vec<Vec<ElsGetHistoryRes>> = futs.try_collect().await?;
-                results.extend(partial_results);
+        let mut results = vec![];
+        for chunk in ChunksIterator::new(scripts.into_iter(), self.concurrency as usize) {
+            let mut futs = FuturesOrdered::new();
+            for script in chunk {
+                futs.push(self._script_get_history(script));
             }
-            Ok(stream::iter(results).collect().await)
-        };
-
-        await_or_block!(future)
+            let partial_results: Vec<Vec<ElsGetHistoryRes>> = futs.try_collect().await?;
+            results.extend(partial_results);
+        }
+        Ok(stream::iter(results).collect().await)
     }
 
     fn els_batch_transaction_get<'s, I: IntoIterator<Item = &'s Txid>>(
         &self,
         txids: I,
     ) -> Result<Vec<Transaction>, Error> {
-        let future = async {
-            let mut results = vec![];
-            for chunk in ChunksIterator::new(txids.into_iter(), self.concurrency as usize) {
-                let mut futs = FuturesOrdered::new();
-                for txid in chunk {
-                    futs.push(self._get_tx_no_opt(&txid));
-                }
-                let partial_results: Vec<Transaction> = futs.try_collect().await?;
-                results.extend(partial_results);
+        let mut results = vec![];
+        for chunk in ChunksIterator::new(txids.into_iter(), self.concurrency as usize) {
+            let mut futs = FuturesOrdered::new();
+            for txid in chunk {
+                futs.push(self._get_tx_no_opt(txid));
             }
-            Ok(stream::iter(results).collect().await)
-        };
-
-        await_or_block!(future)
+            let partial_results: Vec<Transaction> = futs.try_collect().await?;
+            results.extend(partial_results);
+        }
+        Ok(stream::iter(results).collect().await)
     }
 
     fn els_batch_block_header<I: IntoIterator<Item = u32>>(
         &self,
         heights: I,
     ) -> Result<Vec<BlockHeader>, Error> {
-        let future = async {
-            let mut results = vec![];
-            for chunk in ChunksIterator::new(heights.into_iter(), self.concurrency as usize) {
-                let mut futs = FuturesOrdered::new();
-                for height in chunk {
-                    futs.push(self._get_header(height));
-                }
-                let partial_results: Vec<BlockHeader> = futs.try_collect().await?;
-                results.extend(partial_results);
+        let mut results = vec![];
+        for chunk in ChunksIterator::new(heights.into_iter(), self.concurrency as usize) {
+            let mut futs = FuturesOrdered::new();
+            for height in chunk {
+                futs.push(self._get_header(height));
             }
-            Ok(stream::iter(results).collect().await)
-        };
-
-        await_or_block!(future)
+            let partial_results: Vec<BlockHeader> = futs.try_collect().await?;
+            results.extend(partial_results);
+        }
+        Ok(stream::iter(results).collect().await)
     }
 }
 
@@ -375,10 +358,11 @@ impl ConfigurableBlockchain for EsploraBlockchain {
     type Config = EsploraBlockchainConfig;
 
     fn from_config(config: &Self::Config) -> Result<Self, Error> {
-        Ok(EsploraBlockchain::new(
-            config.base_url.as_str(),
-            config.concurrency,
-        ))
+        let mut blockchain = EsploraBlockchain::new(config.base_url.as_str());
+        if let Some(concurrency) = config.concurrency {
+            blockchain.0.concurrency = concurrency;
+        };
+        Ok(blockchain)
     }
 }
 
